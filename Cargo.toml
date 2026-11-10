@@ -1,0 +1,38 @@
+[package]
+name = "gp-guard"
+version = "0.1.0"
+edition = "2021"
+description = "Background watchdog/launcher for the GlobalProtect VPN client"
+
+[dependencies]
+eframe = "0.31"
+tray-icon = "0.20"
+keyring = { version = "3", features = ["windows-native"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+winreg = "0.55"
+chrono = "0.4"
+raw-window-handle = "0.6"
+
+[dependencies.windows]
+version = "0.58"
+features = [
+  "Win32_Foundation",
+  "Win32_Globalization",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Accessibility",
+  "Win32_System_Com",
+  "Win32_System_Variant",
+  "Win32_System_Ole",
+  "Win32_System_Threading",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
+  "Win32_Security",
+]
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
