@@ -337,6 +337,8 @@ pub struct App {
     log_cache: LogCache,
     /// Открыт диалог подтверждения перезапуска GP; `true` — нужно поставить фокус на «Отмена».
     confirm_restart: Option<bool>,
+    /// Фактическое состояние автозапуска; `None` — идёт проверка (schtasks в фоне).
+    autostart_state: Arc<Mutex<Option<config::AutostartState>>>,
 }
 
 impl App {
@@ -375,7 +377,32 @@ impl App {
             log_filter: String::new(),
             log_cache: LogCache::default(),
             confirm_restart: None,
+            autostart_state: Arc::new(Mutex::new(None)),
         }
+        .with_autostart_refresh(&cc.egui_ctx)
+    }
+
+    fn with_autostart_refresh(self, ctx: &egui::Context) -> Self {
+        self.refresh_autostart(ctx);
+        self
+    }
+
+    fn ui_ctx(&self) -> egui::Context {
+        self.ui.ctx.lock().unwrap().clone().unwrap_or_default()
+    }
+
+    /// Перепроверить автозапуск в фоне (запрос к Планировщику занимает заметное время).
+    fn refresh_autostart(&self, ctx: &egui::Context) {
+        let slot = self.autostart_state.clone();
+        *slot.lock().unwrap() = None;
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            // даём фоновой актуализации при старте (main.rs) успеть отработать
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let state = config::autostart_state();
+            *slot.lock().unwrap() = Some(state);
+            ctx.request_repaint();
+        });
     }
 
     fn hide(&self) {
@@ -413,7 +440,9 @@ impl App {
             config::delete_password(&old_user);
         }
 
-        if let Err(e) = config::set_autostart(self.form.autostart) {
+        let autostart = config::set_autostart(self.form.autostart);
+        self.refresh_autostart(&self.ui_ctx());
+        if let Err(e) = autostart {
             self.message = Some((i18n::autostart_failed(&e), false));
             return;
         }
@@ -803,6 +832,12 @@ impl App {
             changed |= field(ui, t(Msg::Password), None, |ui, w| {
                 ui.add(text_input(&mut self.password, w).password(true).hint_text(hint))
             });
+            // явная отметка: пустое поле пароля иначе выглядит как «не сохранено»
+            if self.password_saved {
+                status_note(ui, theme::success(), t(Msg::PasswordSavedBadge));
+            } else {
+                status_note(ui, theme::warning(), t(Msg::PasswordMissingBadge));
+            }
         });
         gap(ui);
         card(ui, |ui| {
@@ -843,6 +878,14 @@ impl App {
             ui.add_space(4.0);
             changed |= toggle_row(
                 ui,
+                &mut self.form.autostart,
+                t(Msg::Autostart),
+                t(Msg::AutostartDesc),
+            );
+            autostart_status(ui, *self.autostart_state.lock().unwrap());
+            ui.separator();
+            changed |= toggle_row(
+                ui,
                 &mut self.form.auto_reconnect,
                 t(Msg::AutoReconnect),
                 t(Msg::AutoReconnectDesc),
@@ -853,13 +896,6 @@ impl App {
                 &mut self.form.connect_on_start,
                 t(Msg::ConnectOnStart),
                 t(Msg::ConnectOnStartDesc),
-            );
-            ui.separator();
-            changed |= toggle_row(
-                ui,
-                &mut self.form.autostart,
-                t(Msg::Autostart),
-                t(Msg::AutostartDesc),
             );
             ui.separator();
             changed |= toggle_row(
@@ -1270,6 +1306,38 @@ fn toggle(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
         }
     }
     resp.on_hover_cursor(CursorIcon::PointingHand)
+}
+
+/// Небольшая строка состояния: цветная точка и пояснение.
+fn status_note(ui: &mut Ui, color: Color32, text: &str) {
+    ui.horizontal_wrapped(|ui| {
+        dot(ui, color, 3.5);
+        ui.label(RichText::new(text).size(theme::FS_SMALL).color(theme::on_dark(color)));
+    });
+}
+
+/// Фактическое состояние автозапуска под переключателем.
+fn autostart_status(ui: &mut Ui, state: Option<config::AutostartState>) {
+    ui.add_space(2.0);
+    let Some(s) = state else {
+        status_note(ui, theme::neutral(), t(Msg::AutostartChecking));
+        return;
+    };
+    let mark = |ok: bool| if ok { "✓" } else { "✗" };
+    let detail = format!(
+        "{}  ·  {} {}  ·  {} {}",
+        t(if s.any() { Msg::AutostartActive } else { Msg::AutostartInactive }),
+        t(Msg::AutostartTask),
+        mark(s.task),
+        t(Msg::AutostartRegistry),
+        mark(s.registry),
+    );
+    let color = match (s.task, s.registry) {
+        (true, true) => theme::success(),
+        (false, false) => theme::neutral(),
+        _ => theme::warning(),
+    };
+    status_note(ui, color, &detail);
 }
 
 fn dot(ui: &mut Ui, color: Color32, radius: f32) {

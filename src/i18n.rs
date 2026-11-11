@@ -245,9 +245,28 @@ messages! {
     ],
     Autostart => ["Запускать при входе в Windows", "Запускати під час входу в Windows", "Start when signing in to Windows"],
     AutostartDesc => [
-        "Добавить GP Guard в автозагрузку текущего пользователя.",
-        "Додати GP Guard до автозавантаження поточного користувача.",
-        "Add GP Guard to the current user's startup programs.",
+        "Задача Планировщика при входе пользователя и запись в автозагрузке. Применяется кнопкой «Сохранить».",
+        "Завдання Планувальника під час входу користувача та запис в автозавантаженні. Застосовується кнопкою «Зберегти».",
+        "A Task Scheduler sign-in task plus a startup entry. Applied when you click “Save”.",
+    ],
+    AutostartActive => ["Автозапуск настроен", "Автозапуск налаштовано", "Autostart is set up"],
+    AutostartInactive => [
+        "Автозапуск сейчас не настроен",
+        "Автозапуск зараз не налаштовано",
+        "Autostart is not set up right now",
+    ],
+    AutostartTask => ["Планировщик задач", "Планувальник завдань", "Task Scheduler"],
+    AutostartRegistry => ["автозагрузка (реестр)", "автозавантаження (реєстр)", "startup entry (registry)"],
+    AutostartChecking => ["проверка…", "перевірка…", "checking…"],
+    PasswordSavedBadge => [
+        "Пароль сохранён в диспетчере учётных данных Windows",
+        "Пароль збережено в диспетчері облікових даних Windows",
+        "Password is saved in Windows Credential Manager",
+    ],
+    PasswordMissingBadge => [
+        "Пароль не сохранён — введите его и нажмите «Сохранить»",
+        "Пароль не збережено — введіть його й натисніть «Зберегти»",
+        "Password is not saved — enter it and click “Save”",
     ],
     StartMinimized => ["Запускаться свёрнутым в трей", "Запускатися згорнутим у трей", "Start minimized to the tray"],
     StartMinimizedDesc => [
@@ -447,6 +466,14 @@ pub fn save_password_failed(e: &str) -> String {
         format!("Не удалось сохранить пароль: {e}"),
         format!("Не вдалося зберегти пароль: {e}"),
         format!("Failed to save the password: {e}"),
+    )
+}
+
+pub fn log_file_write_failed(e: &str) -> String {
+    pick(
+        format!("не удалось записать в файл журнала: {e}"),
+        format!("не вдалося записати у файл журналу: {e}"),
+        format!("failed to write to the log file: {e}"),
     )
 }
 

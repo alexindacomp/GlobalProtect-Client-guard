@@ -43,10 +43,15 @@ fn main() -> eframe::Result<()> {
         diag();
         return Ok(());
     }
-    // один экземпляр на пользователя; повторный запуск просто показывает окно
+    let minimized_arg = std::env::args().any(|a| a == "--minimized");
+    // один экземпляр на пользователя; повторный ручной запуск показывает окно,
+    // а повторный запуск из автозагрузки (задача + Run) молча завершается
     unsafe {
         let _mutex = CreateMutexW(None, true, w!("Local\\GpGuardSingleInstance"));
         if GetLastError() == ERROR_ALREADY_EXISTS {
+            if minimized_arg {
+                return Ok(());
+            }
             if let Ok(h) = FindWindowW(None, w!("GP Guard")) {
                 let _ = ShowWindow(h, SW_SHOW);
                 let _ = ShowWindow(h, SW_RESTORE);
@@ -57,12 +62,18 @@ fn main() -> eframe::Result<()> {
         std::mem::forget(_mutex); // держим мьютекс до завершения процесса
     }
 
-    let minimized = std::env::args().any(|a| a == "--minimized") || cfg.start_minimized;
+    let minimized = minimized_arg || cfg.start_minimized;
     let shared = shared::Shared::new();
 
-    // путь к exe мог измениться — актуализируем запись автозапуска
-    if let Err(e) = config::set_autostart(cfg.autostart) {
-        shared.log(i18n::log_autostart_update_failed(&e));
+    // путь к exe мог измениться — актуализируем автозапуск (задача Планировщика
+    // запускает schtasks, поэтому в фоне, чтобы не задерживать появление окна)
+    if cfg.autostart {
+        let sh = shared.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = config::set_autostart(true) {
+                sh.log(i18n::log_autostart_update_failed(&e));
+            }
+        });
     }
     let first_run = !cfg.is_profile_complete();
 

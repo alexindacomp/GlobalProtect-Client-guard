@@ -87,7 +87,10 @@ pub struct Shared {
     log: Mutex<VecDeque<String>>,
     /// Счётчик добавленных строк — версия журнала для кеша в UI.
     log_seq: AtomicU64,
-    log_file: Mutex<Option<std::fs::File>>,
+    /// Путь к файлу журнала; мьютекс сериализует запись из разных потоков.
+    log_file: Mutex<std::path::PathBuf>,
+    /// Была ли уже ошибка записи в файл (чтобы сообщить о ней один раз).
+    log_file_failed: std::sync::atomic::AtomicBool,
     history: Mutex<VecDeque<Sample>>,
 }
 
@@ -106,7 +109,6 @@ impl Shared {
         if std::fs::metadata(&path).map(|m| m.len() > 1_000_000).unwrap_or(false) {
             let _ = std::fs::rename(&path, path.with_extension("log.old"));
         }
-        let file = std::fs::OpenOptions::new().create(true).append(true).open(path).ok();
         Arc::new(Shared {
             status: Mutex::new(Status {
                 state: ConnState::Starting,
@@ -118,18 +120,37 @@ impl Shared {
             }),
             log: Mutex::new(VecDeque::with_capacity(LOG_LINES)),
             log_seq: AtomicU64::new(0),
-            log_file: Mutex::new(file),
+            log_file: Mutex::new(path),
+            log_file_failed: std::sync::atomic::AtomicBool::new(false),
             history: Mutex::new(VecDeque::new()),
         })
     }
 
     pub fn log(&self, msg: impl AsRef<str>) {
         let line = format!("{} {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"), msg.as_ref());
-        if let Some(f) = self.log_file.lock().unwrap().as_mut() {
-            let _ = writeln!(f, "{line}");
-        }
+        // файл открывается на каждую запись: строки редкие, а временная недоступность
+        // файла (антивирус, индексатор, сон/гибернация) не отключает журнал навсегда
+        let written = {
+            let path = self.log_file.lock().unwrap();
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&*path)
+                .and_then(|mut f| writeln!(f, "{line}"))
+        };
         let mut log = self.log.lock().unwrap();
-        if log.len() == LOG_LINES {
+        if let Err(e) = written {
+            if !self.log_file_failed.swap(true, Ordering::Relaxed) {
+                log.push_back(format!(
+                    "{} {}",
+                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                    crate::i18n::log_file_write_failed(&e.to_string())
+                ));
+            }
+        } else {
+            self.log_file_failed.store(false, Ordering::Relaxed);
+        }
+        while log.len() >= LOG_LINES {
             log.pop_front();
         }
         log.push_back(line);

@@ -1,10 +1,10 @@
 # GP Guard
 
-**Version 0.1.0** · Windows 10/11 x64 · [⬇ Download gp-guard.exe](https://github.com/alexindacomp/GlobalProtect-Client-guard/releases/latest/download/gp-guard.exe) · [Release notes](https://github.com/alexindacomp/GlobalProtect-Client-guard/releases/tag/v0.1.0)
+**Version 0.1.1** · Windows 10/11 x64 · [⬇ Download gp-guard.exe](https://github.com/alexindacomp/GlobalProtect-Client-guard/releases/latest/download/gp-guard.exe) · [Release notes](https://github.com/alexindacomp/GlobalProtect-Client-guard/releases/tag/v0.1.1)
 
 A small tray app that keeps the **GlobalProtect** VPN client connected. It starts `PanGPA.exe`, stores your profile (the password goes to Windows Credential Manager) and reconnects automatically when the tunnel drops. It uses the installed GlobalProtect client as is and does not replace it.
 
-- Launches with Windows and runs in the tray. The icon colour shows the VPN status.
+- Launches with Windows (a Task Scheduler sign-in task plus a startup entry) and runs in the tray. The icon colour shows the VPN status.
 - Reconnects after a drop and restarts PanGPA if it hangs. It stops retrying if the password is rejected, so your account doesn't get locked.
 - Dashboard with status, a 60‑minute connection history and a log.
 - Interface in English, Українська and Русский.
