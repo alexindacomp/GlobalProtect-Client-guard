@@ -15,6 +15,8 @@ pub enum ConnState {
     Connecting,
     Paused,
     NoProfile,
+    /// VPN отключён пользователем; автопереподключение выключено до «Подключить».
+    Off,
 }
 
 impl ConnState {
@@ -26,6 +28,7 @@ impl ConnState {
             ConnState::Connecting => t(Msg::StateConnecting),
             ConnState::Paused => t(Msg::StatePaused),
             ConnState::NoProfile => t(Msg::StateNoProfile),
+            ConnState::Off => t(Msg::StateOff),
         }
     }
 
@@ -34,7 +37,7 @@ impl ConnState {
             ConnState::Connected => [46, 160, 67],
             ConnState::Connecting | ConnState::Starting => [230, 150, 20],
             ConnState::Disconnected => [210, 50, 50],
-            ConnState::Paused | ConnState::NoProfile => [130, 130, 130],
+            ConnState::Paused | ConnState::NoProfile | ConnState::Off => [130, 130, 130],
         }
     }
 }
@@ -68,6 +71,8 @@ impl Status {
 
 pub enum Cmd {
     ConnectNow,
+    /// Отключить VPN и не переподключать до явного «Подключить».
+    Disconnect,
     RestartGp,
     SetPaused(bool),
     ConfigChanged,
@@ -92,6 +97,10 @@ pub struct Shared {
     /// Была ли уже ошибка записи в файл (чтобы сообщить о ней один раз).
     log_file_failed: std::sync::atomic::AtomicBool,
     history: Mutex<VecDeque<Sample>>,
+    /// Состояние проверки/установки обновления.
+    pub update: Mutex<crate::updater::UpdateState>,
+    /// Контекст окна — чтобы фоновые потоки могли запросить перерисовку.
+    pub repaint: Mutex<Option<eframe::egui::Context>>,
 }
 
 pub type SharedRef = Arc<Shared>;
@@ -123,7 +132,15 @@ impl Shared {
             log_file: Mutex::new(path),
             log_file_failed: std::sync::atomic::AtomicBool::new(false),
             history: Mutex::new(VecDeque::new()),
+            update: Mutex::new(crate::updater::UpdateState::Idle),
+            repaint: Mutex::new(None),
         })
+    }
+
+    pub fn request_repaint(&self) {
+        if let Some(ctx) = self.repaint.lock().unwrap().as_ref() {
+            ctx.request_repaint();
+        }
     }
 
     pub fn log(&self, msg: impl AsRef<str>) {

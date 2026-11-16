@@ -626,3 +626,28 @@ pub fn dump() -> Vec<String> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Живой сценарий «Отключить VPN» → «Подключить»: рвёт и восстанавливает реальный туннель.
+    /// Запуск: `cargo test -- --ignored live_disconnect_then_reconnect --nocapture`.
+    #[test]
+    #[ignore = "live: drops and restores the real VPN"]
+    fn live_disconnect_then_reconnect() {
+        unsafe {
+            let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
+        }
+        let log = |s: String| eprintln!("  {s}");
+        assert!(vpn_ip().is_some(), "the VPN must be connected before the test");
+
+        assert!(disconnect(&log), "GP did not drop the tunnel");
+        assert!(vpn_ip().is_none(), "tunnel still up after disconnect");
+
+        let cfg = crate::config::Config::load();
+        let password = crate::config::load_password(&cfg.username).expect("saved password");
+        connect(&cfg.portal, &cfg.username, &password, Duration::from_secs(90), &log).expect("reconnect");
+        assert!(vpn_ip().is_some(), "tunnel is not up after reconnect");
+    }
+}

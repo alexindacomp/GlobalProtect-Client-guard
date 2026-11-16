@@ -89,9 +89,17 @@ messages! {
     StateConnecting => ["Подключение…", "Підключення…", "Connecting…"],
     StatePaused => ["Мониторинг на паузе", "Моніторинг призупинено", "Monitoring paused"],
     StateNoProfile => ["Профиль не заполнен", "Профіль не заповнено", "Profile incomplete"],
+    StateOff => ["Отключено пользователем", "Вимкнено користувачем", "Disconnected by you"],
 
     // ---- действия (окно и трей)
     ConnectNow => ["Подключить сейчас", "Підключити зараз", "Connect now"],
+    Connect => ["Подключить", "Підключити", "Connect"],
+    DisconnectVpn => ["Отключить VPN", "Вимкнути VPN", "Disconnect VPN"],
+    DisconnectVpnHint => [
+        "Отключить туннель и не переподключать, пока вы не нажмёте «Подключить»",
+        "Вимкнути тунель і не перепідключати, доки ви не натиснете «Підключити»",
+        "Disconnect the tunnel and stay disconnected until you click “Connect”",
+    ],
     RestartGp => ["Перезапустить GlobalProtect", "Перезапустити GlobalProtect", "Restart GlobalProtect"],
     PauseMonitoring => ["Приостановить мониторинг", "Призупинити моніторинг", "Pause monitoring"],
     ResumeMonitoring => ["Возобновить мониторинг", "Відновити моніторинг", "Resume monitoring"],
@@ -141,6 +149,12 @@ messages! {
     DurOffline => ["без связи", "без зв’язку", "disconnected"],
     DurConnecting => ["подключение", "підключення", "connecting"],
     DurPaused => ["на паузе", "на паузі", "paused"],
+    DurOff => ["отключено", "вимкнено", "off"],
+    HintOff => [
+        "VPN отключён вручную — GP Guard не будет переподключать его автоматически.",
+        "VPN вимкнено вручну — GP Guard не перепідключатиме його автоматично.",
+        "The VPN was disconnected manually — GP Guard won't reconnect it automatically.",
+    ],
     Since => ["с", "з", "since"],
     HintNoProfile => [
         "Заполните профиль: без пользователя и пароля GP Guard не сможет подключаться.",
@@ -170,7 +184,6 @@ messages! {
     // ---- обзор: действия
     Actions => ["Действия", "Дії", "Actions"],
     FillProfile => ["Заполнить профиль", "Заповнити профіль", "Complete profile"],
-    ConnectBusyConnected => ["VPN уже подключён.", "VPN вже підключено.", "The VPN is already connected."],
     AlreadyConnecting => ["Подключение уже выполняется", "Підключення вже триває", "Already connecting"],
     ConnectNowHint => [
         "Подключиться к VPN, не дожидаясь очередной проверки",
@@ -191,7 +204,7 @@ messages! {
     LegendConnected => ["подключено", "підключено", "connected"],
     LegendConnecting => ["подключение", "підключення", "connecting"],
     LegendOffline => ["нет связи", "немає зв’язку", "disconnected"],
-    LegendPaused => ["пауза / нет профиля", "пауза / немає профілю", "paused / no profile"],
+    LegendPaused => ["выключено / пауза", "вимкнено / пауза", "off / paused"],
 
     // ---- обзор: события
     RecentEvents => ["Последние события", "Останні події", "Recent events"],
@@ -325,6 +338,41 @@ messages! {
     // ---- сообщения журнала: супервизор
     LogStarted => ["GP Guard запущен", "GP Guard запущено", "GP Guard started"],
     LogManualConnect => ["ручной запрос подключения", "ручний запит на підключення", "manual connect request"],
+    LogManualDisconnect => [
+        "отключение VPN по запросу пользователя; автопереподключение выключено",
+        "вимкнення VPN на запит користувача; автоперепідключення вимкнено",
+        "disconnecting the VPN at the user's request; auto-reconnect is off",
+    ],
+    LogDisconnectFailed => [
+        "не удалось отключить VPN через GP — отключите его в окне GlobalProtect",
+        "не вдалося вимкнути VPN через GP — вимкніть його у вікні GlobalProtect",
+        "failed to disconnect the VPN through GP — disconnect it in the GlobalProtect window",
+    ],
+    LogResumedAfterManualConnect => [
+        "VPN подключён вручную — мониторинг снова включён",
+        "VPN підключено вручну — моніторинг знову ввімкнено",
+        "VPN connected manually — monitoring is back on",
+    ],
+
+    // ---- обновления
+    Updates => ["Обновления", "Оновлення", "Updates"],
+    CheckUpdatesAuto => ["Проверять обновления автоматически", "Перевіряти оновлення автоматично", "Check for updates automatically"],
+    CheckUpdatesAutoDesc => [
+        "Раз в 12 часов проверять новые версии на GitHub. Устанавливается только по вашей команде.",
+        "Раз на 12 годин перевіряти нові версії на GitHub. Встановлюється лише за вашою командою.",
+        "Check GitHub for new versions every 12 hours. Updates install only when you choose to.",
+    ],
+    CheckNow => ["Проверить сейчас", "Перевірити зараз", "Check now"],
+    UpdateChecking => ["Проверка обновлений…", "Перевірка оновлень…", "Checking for updates…"],
+    UpdateUpToDate => ["Установлена последняя версия", "Встановлено останню версію", "You have the latest version"],
+    UpdateNotChecked => ["Обновления ещё не проверялись", "Оновлення ще не перевірялися", "Not checked yet"],
+    UpdateInstalling => [
+        "Загрузка и установка… приложение перезапустится",
+        "Завантаження та встановлення… застосунок перезапуститься",
+        "Downloading and installing… the app will restart",
+    ],
+    ReleaseNotes => ["Что нового", "Що нового", "What’s new"],
+    UpdateBadge => ["Доступно обновление", "Доступне оновлення", "Update available"],
     LogAlreadyConnected => ["VPN уже подключён", "VPN вже підключено", "VPN already connected"],
     LogPaused => ["мониторинг приостановлен", "моніторинг призупинено", "monitoring paused"],
     LogResumed => ["мониторинг возобновлён", "моніторинг відновлено", "monitoring resumed"],
@@ -475,6 +523,94 @@ pub fn log_file_write_failed(e: &str) -> String {
         format!("не вдалося записати у файл журналу: {e}"),
         format!("failed to write to the log file: {e}"),
     )
+}
+
+pub fn current_version_line(v: &str) -> String {
+    pick(format!("Текущая версия: {v}"), format!("Поточна версія: {v}"), format!("Current version: {v}"))
+}
+
+pub fn update_available(v: &str) -> String {
+    pick(format!("Доступна версия {v}"), format!("Доступна версія {v}"), format!("Version {v} is available"))
+}
+
+pub fn update_install(v: &str) -> String {
+    pick(format!("Обновить до {v}"), format!("Оновити до {v}"), format!("Update to {v}"))
+}
+
+pub fn update_error(e: &str) -> String {
+    pick(
+        format!("Не удалось проверить или установить обновление: {e}"),
+        format!("Не вдалося перевірити або встановити оновлення: {e}"),
+        format!("Couldn’t check for or install the update: {e}"),
+    )
+}
+
+pub fn update_no_asset(tag: &str) -> String {
+    pick(
+        format!("в релизе {tag} нет файла gp-guard.exe"),
+        format!("у релізі {tag} немає файлу gp-guard.exe"),
+        format!("release {tag} has no gp-guard.exe"),
+    )
+}
+
+pub fn update_bad_source(url: &str) -> String {
+    pick(
+        format!("неожиданный адрес загрузки: {url}"),
+        format!("неочікувана адреса завантаження: {url}"),
+        format!("unexpected download address: {url}"),
+    )
+}
+
+pub fn update_verify_failed(what: &str) -> String {
+    pick(
+        format!("загруженный файл не прошёл проверку ({what})"),
+        format!("завантажений файл не пройшов перевірку ({what})"),
+        format!("the downloaded file failed verification ({what})"),
+    )
+}
+
+pub fn update_write_failed(e: &str) -> String {
+    pick(
+        format!("не удалось заменить файл приложения (нужны права на запись в его папку): {e}"),
+        format!("не вдалося замінити файл застосунку (потрібні права на запис у його теку): {e}"),
+        format!("couldn’t replace the app file (write access to its folder is required): {e}"),
+    )
+}
+
+pub fn log_update_available(v: &str) -> String {
+    pick(format!("доступна новая версия {v}"), format!("доступна нова версія {v}"), format!("new version {v} is available"))
+}
+
+pub fn log_update_check_failed(e: &str) -> String {
+    pick(
+        format!("не удалось проверить обновления: {e}"),
+        format!("не вдалося перевірити оновлення: {e}"),
+        format!("failed to check for updates: {e}"),
+    )
+}
+
+pub fn log_update_downloading(v: &str) -> String {
+    pick(format!("загрузка версии {v}…"), format!("завантаження версії {v}…"), format!("downloading version {v}…"))
+}
+
+pub fn log_update_restarting(v: &str) -> String {
+    pick(
+        format!("версия {v} установлена, перезапуск"),
+        format!("версію {v} встановлено, перезапуск"),
+        format!("version {v} installed, restarting"),
+    )
+}
+
+pub fn log_update_failed(e: &str) -> String {
+    pick(
+        format!("не удалось установить обновление: {e}"),
+        format!("не вдалося встановити оновлення: {e}"),
+        format!("failed to install the update: {e}"),
+    )
+}
+
+pub fn log_updated_to(v: &str) -> String {
+    pick(format!("GP Guard обновлён до версии {v}"), format!("GP Guard оновлено до версії {v}"), format!("GP Guard updated to version {v}"))
 }
 
 pub fn autostart_failed(e: &str) -> String {

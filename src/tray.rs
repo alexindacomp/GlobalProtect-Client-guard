@@ -97,6 +97,7 @@ pub fn spawn(shared: SharedRef, tx: Sender<Cmd>, ui: Arc<UiHandle>, paused: Arc<
 fn run(shared: SharedRef, tx: Sender<Cmd>, ui: Arc<UiHandle>, paused: Arc<AtomicBool>) {
     let open = MenuItem::new(t(Msg::TrayOpen), true, None);
     let connect = MenuItem::new(t(Msg::ConnectNow), true, None);
+    let disconnect = MenuItem::new(t(Msg::DisconnectVpn), true, None);
     let restart = MenuItem::new(t(Msg::RestartGp), true, None);
     let show_gp = MenuItem::new(t(Msg::TrayShowGp), true, None);
     let pause = CheckMenuItem::new(t(Msg::PauseMonitoring), true, false, None);
@@ -106,6 +107,7 @@ fn run(shared: SharedRef, tx: Sender<Cmd>, ui: Arc<UiHandle>, paused: Arc<Atomic
         &open,
         &PredefinedMenuItem::separator(),
         &connect,
+        &disconnect,
         &restart,
         &show_gp,
         &pause,
@@ -114,16 +116,27 @@ fn run(shared: SharedRef, tx: Sender<Cmd>, ui: Arc<UiHandle>, paused: Arc<Atomic
     ]);
 
     let mut state = shared.status().state;
-    let tray = match TrayIconBuilder::new()
-        .with_menu(Box::new(menu))
-        .with_tooltip(format!("GP Guard — {}", state.label()))
-        .with_icon(icon_for(state))
-        .build()
-    {
-        Ok(t) => t,
-        Err(e) => {
-            shared.log(i18n::log_tray_icon_failed(&e.to_string()));
-            return;
+    // при запуске в момент входа в Windows панель задач может быть ещё не готова —
+    // повторяем попытки до ~3 минут, а не остаёмся без значка
+    let mut attempt = 0;
+    let tray = loop {
+        match TrayIconBuilder::new()
+            .with_menu(Box::new(menu.clone()))
+            .with_tooltip(format!("GP Guard — {}", state.label()))
+            .with_icon(icon_for(state))
+            .build()
+        {
+            Ok(t) => break t,
+            Err(e) => {
+                attempt += 1;
+                if attempt == 1 || attempt == 60 {
+                    shared.log(i18n::log_tray_icon_failed(&e.to_string()));
+                }
+                if attempt >= 60 {
+                    return;
+                }
+                std::thread::sleep(Duration::from_secs(3));
+            }
         }
     };
 
@@ -144,6 +157,8 @@ fn run(shared: SharedRef, tx: Sender<Cmd>, ui: Arc<UiHandle>, paused: Arc<Atomic
                 show_ui(&ui);
             } else if id == connect.id() {
                 let _ = tx.send(Cmd::ConnectNow);
+            } else if id == disconnect.id() {
+                let _ = tx.send(Cmd::Disconnect);
             } else if id == restart.id() {
                 restart_gp_confirmed(&shared, &tx);
             } else if id == show_gp.id() {
@@ -172,6 +187,7 @@ fn run(shared: SharedRef, tx: Sender<Cmd>, ui: Arc<UiHandle>, paused: Arc<Atomic
             menu_lang = i18n::lang();
             open.set_text(t(Msg::TrayOpen));
             connect.set_text(t(Msg::ConnectNow));
+            disconnect.set_text(t(Msg::DisconnectVpn));
             restart.set_text(t(Msg::RestartGp));
             show_gp.set_text(t(Msg::TrayShowGp));
             pause.set_text(t(Msg::PauseMonitoring));
@@ -187,6 +203,14 @@ fn run(shared: SharedRef, tx: Sender<Cmd>, ui: Arc<UiHandle>, paused: Arc<Atomic
         if st.state != state {
             state = st.state;
             let _ = tray.set_icon(Some(icon_for(state)));
+        }
+        // доступность пунктов по состоянию туннеля
+        let up = st.vpn_ip.is_some() || matches!(state, ConnState::Connected | ConnState::Connecting);
+        if connect.is_enabled() == up {
+            connect.set_enabled(!up);
+        }
+        if disconnect.is_enabled() != up {
+            disconnect.set_enabled(up);
         }
         let tip = match &st.vpn_ip {
             Some(ip) if state == ConnState::Connected => format!("GP Guard — {} ({ip})", state.label()),

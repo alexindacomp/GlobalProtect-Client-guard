@@ -23,6 +23,7 @@ pub fn spawn(shared: SharedRef, cfg: Arc<Mutex<Config>>, rx: Receiver<Cmd>) {
                 shared,
                 cfg,
                 paused: false,
+                user_off: false,
                 auth_blocked: false,
                 ever_connected: false,
                 down_since: None,
@@ -39,6 +40,8 @@ struct Supervisor {
     shared: SharedRef,
     cfg: Arc<Mutex<Config>>,
     paused: bool,
+    /// Пользователь отключил VPN — не переподключаем до «Подключить».
+    user_off: bool,
     /// GP отверг пароль — ждём, пока пользователь поправит профиль.
     auth_blocked: bool,
     ever_connected: bool,
@@ -74,8 +77,20 @@ impl Supervisor {
 
     fn handle(&mut self, cmd: Cmd) {
         match cmd {
+            Cmd::Disconnect => {
+                self.user_off = true;
+                self.log(t(Msg::LogManualDisconnect));
+                self.shared.set_state(ConnState::Off);
+                if gp::vpn_ip().is_some() {
+                    let sh = self.shared.clone();
+                    if !gp::disconnect(&move |s| sh.log(s)) {
+                        self.log(t(Msg::LogDisconnectFailed));
+                    }
+                }
+            }
             Cmd::ConnectNow => {
                 self.log(t(Msg::LogManualConnect));
+                self.user_off = false;
                 self.auth_blocked = false;
                 if gp::vpn_ip().is_none() {
                     self.attempt(true);
@@ -143,6 +158,17 @@ impl Supervisor {
             st.gp_running = running;
         }
         let prev = self.shared.status().state;
+
+        if self.user_off {
+            if ip.is_none() {
+                self.shared.set_state(ConnState::Off);
+                self.down_since = None;
+                return;
+            }
+            // пользователь подключился сам (через окно GP) — снова следим за туннелем
+            self.user_off = false;
+            self.log(t(Msg::LogResumedAfterManualConnect));
+        }
 
         if let Some(ip) = &ip {
             match &health {

@@ -21,6 +21,7 @@ use crate::config::{self, Config};
 use crate::i18n::{self, t, Msg, Severity};
 use crate::shared::{restart_confirm_title, Cmd, ConnState, Sample, Shared, SharedRef, Status, HISTORY_MINUTES};
 use crate::tray::UiHandle;
+use crate::updater::{self, UpdateState};
 
 /// Дизайн-токены и применение темы. Цвета, радиусы, отступы и шрифты окна берутся только отсюда.
 mod theme {
@@ -357,6 +358,7 @@ impl App {
             }
         }
         *ui.ctx.lock().unwrap() = Some(cc.egui_ctx.clone());
+        *shared.repaint.lock().unwrap() = Some(cc.egui_ctx.clone());
 
         let form = cfg.lock().unwrap().clone();
         let password_saved = config::load_password(&form.username).is_some();
@@ -516,15 +518,28 @@ impl App {
                 self.page = page;
             }
         }
-        if !compact {
-            ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
+        let update_ready = matches!(*self.shared.update.lock().unwrap(), UpdateState::Available(_));
+        ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
+            if !compact {
                 ui.label(
                     RichText::new(i18n::version(env!("CARGO_PKG_VERSION")))
                         .size(theme::FS_SMALL)
                         .color(theme::TEXT_MUTED),
                 );
-            });
-        }
+            }
+            // заметная, но спокойная отметка о новой версии — ведёт в «Настройки → Обновления»
+            if update_ready {
+                let text = if compact { "↑" } else { t(Msg::UpdateBadge) };
+                let resp = ui
+                    .add(egui::Button::new(
+                        RichText::new(text).size(theme::FS_SMALL).color(theme::on_dark(theme::ACCENT)),
+                    ))
+                    .on_hover_text(t(Msg::UpdateBadge));
+                if resp.clicked() {
+                    self.page = Page::Settings;
+                }
+            }
+        });
     }
 
     // ---------- панель сохранения (Профиль / Настройки) ----------
@@ -579,6 +594,7 @@ impl App {
             ConnState::Disconnected => Some(Msg::DurOffline),
             ConnState::Connecting | ConnState::Starting => Some(Msg::DurConnecting),
             ConnState::Paused => Some(Msg::DurPaused),
+            ConnState::Off => Some(Msg::DurOff),
             ConnState::NoProfile => None,
         };
         let duration = prefix.map(|p| i18n::hero_duration(p, &elapsed, &st.since.format("%H:%M:%S").to_string()));
@@ -626,6 +642,7 @@ impl App {
                     ConnState::Paused => {
                         Some((t(Msg::HintPaused), t(Msg::Resume)))
                     }
+                    ConnState::Off => Some((t(Msg::HintOff), t(Msg::Connect))),
                     _ => None,
                 };
                 if let Some((hint, link)) = hint {
@@ -633,10 +650,12 @@ impl App {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(RichText::new(hint).color(theme::TEXT_MUTED));
                         if ui.link(link).clicked() {
-                            if st.state == ConnState::NoProfile {
-                                self.page = Page::Profile;
-                            } else {
-                                self.set_paused(false);
+                            match st.state {
+                                ConnState::NoProfile => self.page = Page::Profile,
+                                ConnState::Off => {
+                                    let _ = self.tx.send(Cmd::ConnectNow);
+                                }
+                                _ => self.set_paused(false),
                             }
                         }
                     });
@@ -715,12 +734,17 @@ impl App {
                     if primary_button(ui, t(Msg::ResumeMonitoring), true).clicked() {
                         self.set_paused(false);
                     }
+                } else if st.vpn_ip.is_some() || st.state == ConnState::Connected {
+                    // туннель поднят: главное действие — отключить (без акцента, это не «основной путь»)
+                    if ui
+                        .button(t(Msg::DisconnectVpn))
+                        .on_hover_text(t(Msg::DisconnectVpnHint))
+                        .clicked()
+                    {
+                        let _ = self.tx.send(Cmd::Disconnect);
+                    }
                 } else {
-                    let busy = match st.state {
-                        ConnState::Connected => Some(t(Msg::ConnectBusyConnected)),
-                        ConnState::Connecting => Some(t(Msg::AlreadyConnecting)),
-                        _ => None,
-                    };
+                    let busy = (st.state == ConnState::Connecting).then(|| t(Msg::AlreadyConnecting));
                     let resp = primary_button(ui, t(Msg::ConnectNow), busy.is_none())
                         .on_hover_text(t(Msg::ConnectNowHint))
                         .on_disabled_hover_text(busy.unwrap_or_default());
@@ -855,6 +879,52 @@ impl App {
         }
     }
 
+    // ---------- Настройки: обновления ----------
+
+    /// Карточка «Обновления»; возвращает `true`, если изменился переключатель автопроверки.
+    fn updates_card(&mut self, ui: &mut Ui) -> bool {
+        let state = self.shared.update.lock().unwrap().clone();
+        let mut changed = false;
+        card(ui, |ui| {
+            card_title(ui, t(Msg::Updates));
+            card_subtitle(ui, &i18n::current_version_line(updater::CURRENT_VERSION));
+            ui.add_space(6.0);
+            match &state {
+                UpdateState::Idle => status_note(ui, theme::neutral(), t(Msg::UpdateNotChecked)),
+                UpdateState::Checking => status_note(ui, theme::neutral(), t(Msg::UpdateChecking)),
+                UpdateState::UpToDate => status_note(ui, theme::success(), t(Msg::UpdateUpToDate)),
+                UpdateState::Available(rel) => {
+                    status_note(ui, theme::ACCENT, &i18n::update_available(&rel.version));
+                }
+                UpdateState::Installing => status_note(ui, theme::warning(), t(Msg::UpdateInstalling)),
+                UpdateState::Error(e) => status_note(ui, theme::danger(), &i18n::update_error(e)),
+            }
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                let busy = matches!(state, UpdateState::Checking | UpdateState::Installing);
+                if let UpdateState::Available(rel) = &state {
+                    if primary_button(ui, &i18n::update_install(&rel.version), true).clicked() {
+                        updater::spawn_install(self.shared.clone(), rel.clone());
+                    }
+                    if !rel.page_url.is_empty() {
+                        ui.hyperlink_to(t(Msg::ReleaseNotes), &rel.page_url);
+                    }
+                }
+                if ui.add_enabled(!busy, egui::Button::new(t(Msg::CheckNow))).clicked() {
+                    updater::spawn_check(self.shared.clone(), true);
+                }
+            });
+            ui.separator();
+            changed |= toggle_row(
+                ui,
+                &mut self.form.check_updates,
+                t(Msg::CheckUpdatesAuto),
+                t(Msg::CheckUpdatesAutoDesc),
+            );
+        });
+        changed
+    }
+
     // ---------- Настройки ----------
 
     fn page_settings(&mut self, ui: &mut Ui) {
@@ -905,6 +975,8 @@ impl App {
                 t(Msg::StartMinimizedDesc),
             );
         });
+        gap(ui);
+        changed |= self.updates_card(ui);
         gap(ui);
         card(ui, |ui| {
             card_title(ui, t(Msg::Advanced));

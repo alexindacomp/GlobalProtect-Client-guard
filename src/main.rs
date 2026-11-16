@@ -11,6 +11,7 @@ mod shared;
 mod supervisor;
 mod tray;
 mod ui;
+mod updater;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc, Mutex};
@@ -18,7 +19,8 @@ use std::sync::{mpsc, Arc, Mutex};
 use eframe::egui;
 use windows::core::w;
 use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
-use windows::Win32::System::Threading::CreateMutexW;
+use windows::Win32::Foundation::{WAIT_ABANDONED, WAIT_OBJECT_0};
+use windows::Win32::System::Threading::{CreateMutexW, WaitForSingleObject};
 use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW};
 
 const WINDOW_TITLE: &str = "GP Guard";
@@ -44,11 +46,21 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
     let minimized_arg = std::env::args().any(|a| a == "--minimized");
+    let after_update = std::env::args().any(|a| a == updater::AFTER_UPDATE_ARG);
     // один экземпляр на пользователя; повторный ручной запуск показывает окно,
     // а повторный запуск из автозагрузки (задача + Run) молча завершается
     unsafe {
-        let _mutex = CreateMutexW(None, true, w!("Local\\GpGuardSingleInstance"));
-        if GetLastError() == ERROR_ALREADY_EXISTS {
+        let mutex = CreateMutexW(None, true, w!("Local\\GpGuardSingleInstance"));
+        let exists = GetLastError() == ERROR_ALREADY_EXISTS;
+        if exists && after_update {
+            // новая версия после обновления: ждём, пока старая завершится и отпустит мьютекс
+            if let Ok(h) = &mutex {
+                let r = WaitForSingleObject(*h, 30_000);
+                if r != WAIT_OBJECT_0 && r != WAIT_ABANDONED {
+                    return Ok(());
+                }
+            }
+        } else if exists {
             if minimized_arg {
                 return Ok(());
             }
@@ -59,11 +71,16 @@ fn main() -> eframe::Result<()> {
             }
             return Ok(());
         }
-        std::mem::forget(_mutex); // держим мьютекс до завершения процесса
+        std::mem::forget(mutex); // держим мьютекс до завершения процесса
     }
 
-    let minimized = minimized_arg || cfg.start_minimized;
+    // после обновления показываем окно, чтобы было видно, что версия сменилась
+    let minimized = !after_update && (minimized_arg || cfg.start_minimized);
     let shared = shared::Shared::new();
+    if after_update {
+        shared.log(i18n::log_updated_to(updater::CURRENT_VERSION));
+    }
+    updater::cleanup_old_exe();
 
     // путь к exe мог измениться — актуализируем автозапуск (задача Планировщика
     // запускает schtasks, поэтому в фоне, чтобы не задерживать появление окна)
@@ -84,6 +101,7 @@ fn main() -> eframe::Result<()> {
 
     supervisor::spawn(shared.clone(), cfg.clone(), rx);
     tray::spawn(shared.clone(), tx.clone(), ui_handle.clone(), paused.clone());
+    updater::spawn_auto_checker(shared.clone(), cfg.clone());
 
     let icon = egui::IconData { rgba: tray::make_icon_rgba([46, 160, 67], 64), width: 64, height: 64 };
     let options = eframe::NativeOptions {

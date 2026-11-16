@@ -34,6 +34,8 @@ pub struct Config {
     pub start_minimized: bool,
     /// Язык интерфейса: "auto" (как в Windows), "ru", "uk" или "en".
     pub language: String,
+    /// Проверять новые версии на GitHub (установка — только по команде пользователя).
+    pub check_updates: bool,
 }
 
 impl Default for Config {
@@ -52,6 +54,7 @@ impl Default for Config {
             autostart: true,
             start_minimized: true,
             language: "auto".to_string(),
+            check_updates: true,
         }
     }
 }

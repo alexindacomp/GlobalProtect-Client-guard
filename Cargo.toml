@@ -1,6 +1,6 @@
 [package]
 name = "gp-guard"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Background watchdog/launcher for the GlobalProtect VPN client"
 
@@ -13,6 +13,9 @@ serde_json = "1"
 winreg = "0.55"
 chrono = "0.4"
 raw-window-handle = "0.6"
+# обновление из GitHub Releases: HTTPS-клиент и проверка SHA-256 загруженного exe
+ureq = "2"
+sha2 = "0.10"
 
 [dependencies.windows]
 version = "0.58"
